@@ -21,6 +21,16 @@ export default function InterviewRoom() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
+  const [interviewConfig, setInterviewConfig] = useState<any>(null);
+  const [resumeData, setResumeData] = useState<any>(null);
+
+  useEffect(() => {
+    const config = localStorage.getItem('interviewConfig');
+    const resume = localStorage.getItem('resumeAnalysis');
+    if (config) setInterviewConfig(JSON.parse(config));
+    if (resume) setResumeData(JSON.parse(resume));
+  }, []);
+
   // Initialize Socket Connection
   useEffect(() => {
     socketRef.current = io("http://localhost:3001");
@@ -64,10 +74,15 @@ export default function InterviewRoom() {
   const toggleSession = () => {
     setIsStarted(!isStarted);
     if (!isStarted) {
-      socketRef.current?.emit('start_interview', { role: 'backend_engineer' });
+      socketRef.current?.emit('start_interview', { 
+        role: interviewConfig?.role || 'Software Engineer',
+        format: interviewConfig?.format || 'technical',
+        difficulty: interviewConfig?.difficulty || 'intermediate',
+        resumeData: resumeData
+      });
       setTimeout(() => {
         if (transcript.length <= 1) {
-          setTranscript(prev => [...prev, { role: 'ai', text: "Let's start with a basic question. Can you explain the difference between a process and a thread?" }]);
+          setTranscript(prev => [...prev, { role: 'ai', text: `Let's start your ${interviewConfig?.role || 'technical'} interview. Tell me about yourself.` }]);
         }
       }, 1500);
     } else {
@@ -120,7 +135,9 @@ export default function InterviewRoom() {
       <header className="h-14 border-b border-white/10 flex items-center justify-between px-6 bg-black/50">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-          <span className="text-sm font-medium text-white/80">Senior Backend Engineer Mock</span>
+          <span className="text-sm font-medium text-white/80">
+            {interviewConfig?.role ? `${interviewConfig.role} Mock` : "Technical Mock"}
+          </span>
         </div>
         <div className="flex items-center gap-4 text-sm">
           <span className="text-white/60">00:00:00</span>

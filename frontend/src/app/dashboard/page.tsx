@@ -14,7 +14,10 @@ export default function Dashboard() {
             <BrainCircuit className="w-6 h-6 text-primary" />
             <span className="font-bold text-xl tracking-tight">IntervAI</span>
           </Link>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-6">
+            <Link href="/dashboard" className="text-sm text-primary font-medium">Dashboard</Link>
+            <Link href="/analytics" className="text-sm text-white/60 hover:text-white">Analytics</Link>
+            <Link href="/profile" className="text-sm text-white/60 hover:text-white">Profile</Link>
             <div className="w-8 h-8 rounded-full bg-primary/20 border border-primary/50 flex items-center justify-center text-sm font-medium">
               JD
             </div>
@@ -28,8 +31,8 @@ export default function Dashboard() {
             <h1 className="text-3xl font-bold">Welcome back, John</h1>
             <p className="text-white/60 mt-1">Here is your interview readiness overview.</p>
           </div>
-          <Link href="/interview" className="px-6 py-3 bg-primary hover:bg-primary/90 text-white rounded-lg font-medium transition-colors flex items-center gap-2">
-            <Target className="w-4 h-4" /> Start Mock Interview
+          <Link href="/resume-upload" className="px-6 py-3 bg-primary hover:bg-primary/90 text-white rounded-lg font-medium transition-colors flex items-center gap-2">
+            <Target className="w-4 h-4" /> Upload Resume to Start
           </Link>
         </div>
 
