@@ -24,8 +24,27 @@ io.on('connection', (socket) => {
   });
 
   // Handle real-time interview interactions here
+  socket.on('start_interview', (data) => {
+    console.log(`Starting interview for role: ${data.role}`);
+    // Simulate AI taking a moment to think, then sending the first question
+    setTimeout(() => {
+      socket.emit('ai_response', { text: "Hello! Let's get started. Could you tell me about a time you had to design a highly scalable system? What approach did you take?" });
+    }, 1500);
+  });
+
   socket.on('audio_chunk', (data) => {
     // Process audio chunk, send to STT
+    // For now, simulate receiving a transcript and responding
+    setTimeout(() => {
+       socket.emit('user_transcript', { text: "I used microservices and Redis for caching." });
+       setTimeout(() => {
+         socket.emit('ai_response', { text: "That's a solid approach. Why Redis specifically instead of Memcached?" });
+       }, 2000);
+    }, 1000);
+  });
+
+  socket.on('end_interview', () => {
+    console.log(`Interview ended for ${socket.id}`);
   });
 });
 

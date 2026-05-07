@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Mic, MicOff, Video, VideoOff, PhoneOff, BrainCircuit, Activity } from "lucide-react";
 import Link from "next/link";
+import { io, Socket } from "socket.io-client";
 
 export default function InterviewRoom() {
   const [isStarted, setIsStarted] = useState(false);
@@ -14,6 +15,28 @@ export default function InterviewRoom() {
   ]);
   
   const videoRef = useRef<HTMLVideoElement>(null);
+  const socketRef = useRef<Socket | null>(null);
+
+  // Initialize Socket Connection
+  useEffect(() => {
+    socketRef.current = io("http://localhost:3001");
+    
+    socketRef.current.on('connect', () => {
+      console.log('Connected to backend:', socketRef.current?.id);
+    });
+
+    socketRef.current.on('ai_response', (data: { text: string }) => {
+      setTranscript(prev => [...prev, { role: 'ai', text: data.text }]);
+    });
+
+    socketRef.current.on('user_transcript', (data: { text: string }) => {
+      setTranscript(prev => [...prev, { role: 'user', text: data.text }]);
+    });
+
+    return () => {
+      socketRef.current?.disconnect();
+    };
+  }, []);
 
   // Simulate webcam
   useEffect(() => {
@@ -37,9 +60,16 @@ export default function InterviewRoom() {
   const toggleSession = () => {
     setIsStarted(!isStarted);
     if (!isStarted) {
+      socketRef.current?.emit('start_interview', { role: 'backend_engineer' });
+      // Remove the simulated timeout since the backend should respond now
+      // However, as a fallback if backend is not running, we keep a fallback response
       setTimeout(() => {
-        setTranscript(prev => [...prev, { role: 'ai', text: "Let's start with a basic question. Can you explain the difference between a process and a thread?" }]);
-      }, 1000);
+        if (transcript.length <= 1) {
+          setTranscript(prev => [...prev, { role: 'ai', text: "Let's start with a basic question. Can you explain the difference between a process and a thread?" }]);
+        }
+      }, 1500);
+    } else {
+      socketRef.current?.emit('end_interview');
     }
   };
 
