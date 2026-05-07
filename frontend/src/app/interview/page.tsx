@@ -10,12 +10,16 @@ export default function InterviewRoom() {
   const [isStarted, setIsStarted] = useState(false);
   const [isMicOn, setIsMicOn] = useState(true);
   const [isVideoOn, setIsVideoOn] = useState(true);
+  const [userInput, setUserInput] = useState("");
+  const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState<{role: 'ai' | 'user', text: string}[]>([
     { role: 'ai', text: "Hello John, I'm your AI interviewer today. Whenever you're ready, we can begin the technical round." }
   ]);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const socketRef = useRef<Socket | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   // Initialize Socket Connection
   useEffect(() => {
@@ -61,8 +65,6 @@ export default function InterviewRoom() {
     setIsStarted(!isStarted);
     if (!isStarted) {
       socketRef.current?.emit('start_interview', { role: 'backend_engineer' });
-      // Remove the simulated timeout since the backend should respond now
-      // However, as a fallback if backend is not running, we keep a fallback response
       setTimeout(() => {
         if (transcript.length <= 1) {
           setTranscript(prev => [...prev, { role: 'ai', text: "Let's start with a basic question. Can you explain the difference between a process and a thread?" }]);
@@ -70,6 +72,45 @@ export default function InterviewRoom() {
       }, 1500);
     } else {
       socketRef.current?.emit('end_interview');
+      if (isRecording) stopRecording();
+    }
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        if (socketRef.current) {
+          // Send the audio blob to the backend
+          socketRef.current.emit('audio_answer', audioBlob);
+        }
+        audioChunksRef.current = [];
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error("Error accessing microphone:", err);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      // Stop all tracks to release mic
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
     }
   };
 
@@ -167,6 +208,42 @@ export default function InterviewRoom() {
               </div>
             ))}
           </div>
+
+          {/* Chat Input for Fallback/Testing */}
+          {isStarted && (
+            <div className="p-4 border-t border-white/10 bg-black/20 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-white/50">Voice Response</span>
+                <button 
+                  onClick={isRecording ? stopRecording : startRecording}
+                  className={`px-4 py-1.5 rounded-full text-xs font-medium flex items-center gap-2 transition-colors ${isRecording ? 'bg-red-500/20 text-red-400 border border-red-500/50' : 'bg-primary/20 text-primary border border-primary/50 hover:bg-primary/30'}`}
+                >
+                  {isRecording ? (
+                    <><span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" /> Stop Recording</>
+                  ) : (
+                    <><Mic className="w-3 h-3" /> Start Speaking</>
+                  )}
+                </button>
+              </div>
+
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                if (userInput.trim() && socketRef.current) {
+                  socketRef.current.emit('user_message', { text: userInput });
+                  setUserInput("");
+                }
+              }} className="flex gap-2">
+                <input 
+                  type="text" 
+                  value={userInput}
+                  onChange={(e) => setUserInput(e.target.value)}
+                  placeholder="Or type your response..." 
+                  className="flex-grow bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
+                />
+                <button type="submit" className="px-3 py-2 bg-primary rounded-lg text-white text-sm">Send</button>
+              </form>
+            </div>
+          )}
 
           <div className="p-4 border-t border-white/10 bg-black/20">
             <h4 className="text-xs font-semibold text-white/50 mb-3 uppercase tracking-wider">Real-time Insights</h4>
