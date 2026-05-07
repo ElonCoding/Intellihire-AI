@@ -3,8 +3,48 @@
 import { motion } from "framer-motion";
 import { BrainCircuit, LineChart, Target, Calendar, Clock, ArrowUpRight } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { auth, db } from "../../lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 
 export default function Dashboard() {
+  const [userName, setUserName] = useState("Guest");
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        // Fetch user document to get name
+        try {
+          const userDocRef = doc(db, "users", user.uid);
+          const userDoc = await getDoc(userDocRef);
+          if (userDoc.exists()) {
+            setUserName(userDoc.data().name || "User");
+          } else {
+            setUserName(user.displayName || "User");
+          }
+        } catch (e) {
+          console.error("Error fetching user data", e);
+        }
+        setLoading(false);
+      } else {
+        router.push("/login");
+      }
+    });
+
+    return () => unsubscribe();
+  }, [router]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <BrainCircuit className="w-12 h-12 text-primary animate-pulse" />
+      </div>
+    );
+  }
   return (
     <div className="min-h-screen bg-background">
       {/* Sidebar / Topbar */}
@@ -18,8 +58,8 @@ export default function Dashboard() {
             <Link href="/dashboard" className="text-sm text-primary font-medium">Dashboard</Link>
             <Link href="/analytics" className="text-sm text-white/60 hover:text-white">Analytics</Link>
             <Link href="/profile" className="text-sm text-white/60 hover:text-white">Profile</Link>
-            <div className="w-8 h-8 rounded-full bg-primary/20 border border-primary/50 flex items-center justify-center text-sm font-medium">
-              JD
+            <div className="w-8 h-8 rounded-full bg-primary/20 border border-primary/50 flex items-center justify-center text-sm font-medium uppercase">
+              {userName.substring(0, 2)}
             </div>
           </div>
         </div>
@@ -28,7 +68,7 @@ export default function Dashboard() {
       <main className="max-w-7xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold">Welcome back, John</h1>
+            <h1 className="text-3xl font-bold">Welcome back, {userName.split(' ')[0]}</h1>
             <p className="text-white/60 mt-1">Here is your interview readiness overview.</p>
           </div>
           <Link href="/resume-upload" className="px-6 py-3 bg-primary hover:bg-primary/90 text-white rounded-lg font-medium transition-colors flex items-center gap-2">

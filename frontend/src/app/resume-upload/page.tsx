@@ -4,6 +4,8 @@ import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { UploadCloud, FileText, CheckCircle, BrainCircuit, AlertCircle, ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { auth, db } from "../../lib/firebase";
+import { doc, setDoc } from "firebase/firestore";
 
 export default function ResumeUpload() {
   const [file, setFile] = useState<File | null>(null);
@@ -69,6 +71,18 @@ export default function ResumeUpload() {
       if (res.ok) {
         const data = await res.json();
         setProgress(100);
+        
+        if (auth.currentUser) {
+          try {
+            await setDoc(doc(db, "users", auth.currentUser.uid, "data", "resume"), {
+              ...data,
+              updatedAt: new Date().toISOString()
+            });
+          } catch (e) {
+            console.error("Failed to save to Firestore", e);
+          }
+        }
+
         setTimeout(() => {
           setAnalysisResult(data);
           setIsAnalyzing(false);

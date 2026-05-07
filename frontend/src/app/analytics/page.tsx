@@ -8,9 +8,56 @@ import {
   CheckCircle, Target, FileText
 } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { auth, db } from "../../lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 
 export default function AnalyticsDashboard() {
   const [activeTab, setActiveTab] = useState("resume");
+  const [userName, setUserName] = useState("Guest");
+  const [resumeData, setResumeData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        try {
+          // Fetch user doc for name
+          const userDoc = await getDoc(doc(db, "users", user.uid));
+          if (userDoc.exists()) setUserName(userDoc.data().name || "User");
+          else setUserName(user.displayName || "User");
+
+          // Fetch resume data
+          const resumeDoc = await getDoc(doc(db, "users", user.uid, "data", "resume"));
+          if (resumeDoc.exists()) {
+            setResumeData(resumeDoc.data());
+          } else {
+            // Check local storage as fallback
+            const localResume = localStorage.getItem('resumeAnalysis');
+            if (localResume) setResumeData(JSON.parse(localResume));
+          }
+        } catch (e) {
+          console.error("Error fetching data", e);
+        }
+        setLoading(false);
+      } else {
+        router.push("/login");
+      }
+    });
+
+    return () => unsubscribe();
+  }, [router]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <BrainCircuit className="w-12 h-12 text-primary animate-pulse" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -25,8 +72,8 @@ export default function AnalyticsDashboard() {
             <Link href="/dashboard" className="text-sm text-white/60 hover:text-white">Dashboard</Link>
             <Link href="/analytics" className="text-sm text-primary font-medium">Analytics</Link>
             <Link href="/profile" className="text-sm text-white/60 hover:text-white">Profile</Link>
-            <div className="w-8 h-8 rounded-full bg-primary/20 border border-primary/50 flex items-center justify-center text-sm font-medium">
-              JD
+            <div className="w-8 h-8 rounded-full bg-primary/20 border border-primary/50 flex items-center justify-center text-sm font-medium uppercase">
+              {userName.substring(0, 2)}
             </div>
           </div>
         </div>
@@ -63,58 +110,67 @@ export default function AnalyticsDashboard() {
         <div className="space-y-6">
           {activeTab === "resume" && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="col-span-1 bg-white/5 border border-white/10 rounded-2xl p-6 relative overflow-hidden group">
-                <div className="absolute -right-4 -top-4 w-24 h-24 bg-primary/20 rounded-full blur-2xl" />
-                <h3 className="text-white/60 text-sm font-medium mb-4 uppercase tracking-wider">ATS Score</h3>
-                <div className="flex items-end gap-2 mb-2">
-                  <span className="text-5xl font-bold">82</span>
-                  <span className="text-white/40 mb-1">/100</span>
-                </div>
-                <div className="w-full h-2 bg-white/10 rounded-full mt-4 overflow-hidden">
-                  <div className="w-[82%] h-full bg-green-500 rounded-full" />
-                </div>
-                <p className="text-xs text-white/50 mt-4">Top 15% of candidates in your field.</p>
-              </div>
-
-              <div className="col-span-1 md:col-span-2 bg-white/5 border border-white/10 rounded-2xl p-6">
-                <h3 className="text-white/60 text-sm font-medium mb-4 uppercase tracking-wider">Keyword Match Analysis</h3>
-                <div className="space-y-4">
-                  {[
-                    { name: 'React.js', match: 95, color: 'bg-blue-500' },
-                    { name: 'Node.js', match: 80, color: 'bg-green-500' },
-                    { name: 'System Design', match: 40, color: 'bg-yellow-500' },
-                    { name: 'Cloud/AWS', match: 20, color: 'bg-red-500' },
-                  ].map(skill => (
-                    <div key={skill.name}>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span>{skill.name}</span>
-                        <span className="text-white/60">{skill.match}%</span>
-                      </div>
-                      <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-                        <div className={`h-full ${skill.color}`} style={{ width: `${skill.match}%` }} />
-                      </div>
+              {resumeData ? (
+                <>
+                  <div className="col-span-1 bg-white/5 border border-white/10 rounded-2xl p-6 relative overflow-hidden group">
+                    <div className="absolute -right-4 -top-4 w-24 h-24 bg-primary/20 rounded-full blur-2xl" />
+                    <h3 className="text-white/60 text-sm font-medium mb-4 uppercase tracking-wider">ATS Score</h3>
+                    <div className="flex items-end gap-2 mb-2">
+                      <span className="text-5xl font-bold">{resumeData.atsScore || 0}</span>
+                      <span className="text-white/40 mb-1">/100</span>
                     </div>
-                  ))}
-                </div>
-              </div>
+                    <div className="w-full h-2 bg-white/10 rounded-full mt-4 overflow-hidden">
+                      <div className="h-full bg-green-500 rounded-full transition-all duration-1000" style={{ width: `${resumeData.atsScore || 0}%` }} />
+                    </div>
+                    <p className="text-xs text-white/50 mt-4">{resumeData.summary}</p>
+                  </div>
 
-              <div className="col-span-1 md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-red-500/5 border border-red-500/20 rounded-2xl p-6">
-                  <h3 className="text-red-400 font-semibold mb-4 flex items-center gap-2"><AlertTriangle className="w-5 h-5" /> Resume Weaknesses</h3>
-                  <ul className="space-y-3">
-                    <li className="flex gap-3 text-sm"><div className="w-1.5 h-1.5 rounded-full bg-red-400 mt-1.5" /><span>Missing quantifiable metrics in "E-commerce App" project.</span></li>
-                    <li className="flex gap-3 text-sm"><div className="w-1.5 h-1.5 rounded-full bg-red-400 mt-1.5" /><span>Overused generic action verbs (e.g., "Responsible for").</span></li>
-                    <li className="flex gap-3 text-sm"><div className="w-1.5 h-1.5 rounded-full bg-red-400 mt-1.5" /><span>Education section lacks graduation date.</span></li>
-                  </ul>
+                  <div className="col-span-1 md:col-span-2 bg-white/5 border border-white/10 rounded-2xl p-6">
+                    <h3 className="text-white/60 text-sm font-medium mb-4 uppercase tracking-wider">Extracted Skills</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {resumeData.skills?.map((skill: string, i: number) => (
+                        <span key={i} className="px-3 py-1 bg-primary/10 border border-primary/20 rounded-full text-sm text-blue-200">
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="col-span-1 md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="bg-red-500/5 border border-red-500/20 rounded-2xl p-6">
+                      <h3 className="text-red-400 font-semibold mb-4 flex items-center gap-2"><AlertTriangle className="w-5 h-5" /> Resume Weaknesses</h3>
+                      <ul className="space-y-3">
+                        {resumeData.weaknesses?.map((w: string, i: number) => (
+                          <li key={i} className="flex gap-3 text-sm">
+                            <div className="w-1.5 h-1.5 rounded-full bg-red-400 mt-1.5" />
+                            <span>{w}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="bg-green-500/5 border border-green-500/20 rounded-2xl p-6">
+                      <h3 className="text-green-400 font-semibold mb-4 flex items-center gap-2"><CheckCircle className="w-5 h-5" /> Strong Points</h3>
+                      <ul className="space-y-3">
+                        {resumeData.strengths?.map((s: string, i: number) => (
+                          <li key={i} className="flex gap-3 text-sm">
+                            <div className="w-1.5 h-1.5 rounded-full bg-green-400 mt-1.5" />
+                            <span>{s}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="col-span-1 md:col-span-3 bg-white/5 border border-white/10 rounded-2xl p-12 text-center">
+                  <FileText className="w-16 h-16 text-white/20 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold mb-2">No Resume Found</h3>
+                  <p className="text-white/60 mb-6">Upload your resume to unlock your personalized intelligence dashboard.</p>
+                  <Link href="/resume-upload" className="px-6 py-3 bg-primary hover:bg-primary/90 text-white rounded-lg font-medium transition-colors">
+                    Upload Resume
+                  </Link>
                 </div>
-                <div className="bg-green-500/5 border border-green-500/20 rounded-2xl p-6">
-                  <h3 className="text-green-400 font-semibold mb-4 flex items-center gap-2"><CheckCircle className="w-5 h-5" /> Strong Points</h3>
-                  <ul className="space-y-3">
-                    <li className="flex gap-3 text-sm"><div className="w-1.5 h-1.5 rounded-full bg-green-400 mt-1.5" /><span>Excellent progression shown in recent roles.</span></li>
-                    <li className="flex gap-3 text-sm"><div className="w-1.5 h-1.5 rounded-full bg-green-400 mt-1.5" /><span>Strong emphasis on modern frontend frameworks.</span></li>
-                  </ul>
-                </div>
-              </div>
+              )}
             </motion.div>
           )}
 
