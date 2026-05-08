@@ -12,14 +12,17 @@ export default function InterviewRoom() {
   const [isVideoOn, setIsVideoOn] = useState(true);
   const [userInput, setUserInput] = useState("");
   const [isRecording, setIsRecording] = useState(false);
+  const [isThinking, setIsThinking] = useState(false);
+  const [interimTranscript, setInterimTranscript] = useState("");
   const [transcript, setTranscript] = useState<{role: 'ai' | 'user', text: string}[]>([
-    { role: 'ai', text: "Hello John, I'm your AI interviewer today. Whenever you're ready, we can begin the technical round." }
+    { role: 'ai', text: "Hello! I'm your AI interviewer. Whenever you're ready, we can begin." }
   ]);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const recognitionRef = useRef<any>(null);
 
   const [interviewConfig, setInterviewConfig] = useState<any>(null);
   const [resumeData, setResumeData] = useState<any>(null);
@@ -41,10 +44,13 @@ export default function InterviewRoom() {
 
     socketRef.current.on('ai_response', (data: { text: string }) => {
       setTranscript(prev => [...prev, { role: 'ai', text: data.text }]);
+      setIsThinking(false);
+      speakText(data.text);
     });
 
     socketRef.current.on('user_transcript', (data: { text: string }) => {
       setTranscript(prev => [...prev, { role: 'user', text: data.text }]);
+      setIsThinking(true);
     });
 
     return () => {
@@ -71,6 +77,24 @@ export default function InterviewRoom() {
     }
   }, [isVideoOn]);
 
+  const speakText = (text: string) => {
+    if (!("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel(); // Stop any ongoing speech
+    
+    const utterance = new SpeechSynthesisUtterance(text);
+    // Find a good English voice
+    const voices = window.speechSynthesis.getVoices();
+    const preferredVoice = voices.find(v => v.name.includes("Google UK English Female") || v.name.includes("Samantha") || v.name.includes("Female"));
+    if (preferredVoice) {
+      utterance.voice = preferredVoice;
+    }
+    
+    utterance.rate = 0.95; // Slightly slower for clarity
+    utterance.pitch = 1.0;
+    
+    window.speechSynthesis.speak(utterance);
+  };
+
   const toggleSession = () => {
     setIsStarted(!isStarted);
     if (!isStarted) {
@@ -82,12 +106,17 @@ export default function InterviewRoom() {
       });
       setTimeout(() => {
         if (transcript.length <= 1) {
-          setTranscript(prev => [...prev, { role: 'ai', text: `Let's start your ${interviewConfig?.role || 'technical'} interview. Tell me about yourself.` }]);
+          const startMsg = `Let's start your ${interviewConfig?.role || 'technical'} interview. Tell me about yourself.`;
+          setTranscript(prev => [...prev, { role: 'ai', text: startMsg }]);
+          speakText(startMsg);
         }
       }, 1500);
     } else {
       socketRef.current?.emit('end_interview');
       if (isRecording) stopRecording();
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
     }
   };
 
@@ -107,11 +136,39 @@ export default function InterviewRoom() {
       mediaRecorder.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         if (socketRef.current) {
-          // Send the audio blob to the backend
           socketRef.current.emit('audio_answer', audioBlob);
         }
         audioChunksRef.current = [];
+        setInterimTranscript(""); // Clear interim on stop
       };
+
+      // Initialize Web Speech API for real-time feedback
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'en-US';
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        
+        recognition.onresult = (event: any) => {
+          let interim = "";
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              const finalTranscript = event.results[i][0].transcript;
+              if (finalTranscript.trim() && socketRef.current) {
+                // Send final transcript immediately for faster AI response
+                socketRef.current.emit('user_message', { text: finalTranscript });
+              }
+            } else {
+              interim += event.results[i][0].transcript;
+            }
+          }
+          setInterimTranscript(interim);
+        };
+        
+        recognition.start();
+        recognitionRef.current = recognition;
+      }
 
       mediaRecorder.start();
       setIsRecording(true);
@@ -123,8 +180,10 @@ export default function InterviewRoom() {
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
       setIsRecording(false);
-      // Stop all tracks to release mic
       mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
     }
   };
@@ -154,17 +213,23 @@ export default function InterviewRoom() {
             <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/80 z-10" />
             <BrainCircuit className="w-32 h-32 text-primary/40 z-0 animate-pulse" />
             
-            {/* Visualizer when AI is talking */}
-            {isStarted && (
+            {/* Visualizer when AI is talking or thinking */}
+            {(isStarted || isThinking) && (
               <div className="absolute bottom-1/2 left-1/2 -translate-x-1/2 translate-y-1/2 z-0 flex items-center gap-1 opacity-50">
                 {[1,2,3,4,5].map((i) => (
                   <motion.div
                     key={i}
-                    animate={{ height: ["10px", "40px", "10px"] }}
-                    transition={{ repeat: Infinity, duration: 0.5 + (i * 0.1), ease: "easeInOut" }}
-                    className="w-2 bg-primary rounded-full"
+                    animate={isThinking ? { height: ["10px", "20px", "10px"], opacity: [0.3, 0.6, 0.3] } : { height: ["10px", "40px", "10px"] }}
+                    transition={{ repeat: Infinity, duration: isThinking ? 1 + (i * 0.2) : 0.5 + (i * 0.1), ease: "easeInOut" }}
+                    className={`w-2 rounded-full ${isThinking ? 'bg-purple-500' : 'bg-primary'}`}
                   />
                 ))}
+              </div>
+            )}
+
+            {isThinking && (
+              <div className="absolute top-4 right-4 z-20 px-3 py-1 rounded-full bg-purple-500/20 text-purple-400 text-xs font-medium border border-purple-500/30 animate-pulse">
+                AI is thinking...
               </div>
             )}
 
@@ -224,6 +289,15 @@ export default function InterviewRoom() {
                 </div>
               </div>
             ))}
+            {/* Real-time interim transcript */}
+            {isRecording && interimTranscript && (
+              <div className="flex flex-col items-end opacity-70">
+                <span className="text-xs text-white/40 mb-1">Live Transcript...</span>
+                <div className="px-4 py-2 rounded-2xl max-w-[85%] text-sm bg-primary/20 text-white italic border border-primary/30">
+                  {interimTranscript}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Chat Input for Fallback/Testing */}

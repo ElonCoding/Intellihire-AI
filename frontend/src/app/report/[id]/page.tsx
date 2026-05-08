@@ -4,9 +4,48 @@ import { motion } from "framer-motion";
 import { BrainCircuit, CheckCircle2, XCircle, AlertCircle, TrendingUp, Mic, Eye, BarChart } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useState } from "react";
 
 export default function InterviewReport() {
   const params = useParams();
+  const [feedback, setFeedback] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const sendFeedbackToN8N = async () => {
+    if (!feedback) return;
+    setIsSending(true);
+    try {
+      // This is a placeholder webhook URL. 
+      // User needs to create this webhook in n8n.
+      const webhookUrl = "http://localhost:5678/webhook-test/feedback";
+      
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sessionId: params.id,
+          feedback: feedback,
+          timestamp: new Date().toISOString(),
+          score: 84 // From the static state below
+        }),
+      });
+
+      if (response.ok) {
+        setSent(true);
+        setFeedback("");
+      } else {
+        alert("Failed to send feedback to n8n. Make sure n8n is running and the webhook is active.");
+      }
+    } catch (err) {
+      console.error("n8n Error:", err);
+      alert("Error connecting to n8n.");
+    } finally {
+      setIsSending(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -111,6 +150,60 @@ export default function InterviewReport() {
           </div>
         </div>
 
+        {/* n8n Feedback Section */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="p-8 rounded-3xl bg-gradient-to-br from-primary/10 via-background to-purple-500/10 border border-white/10 shadow-2xl overflow-hidden relative"
+        >
+          <div className="absolute top-0 right-0 p-8 opacity-10">
+            <BrainCircuit className="w-24 h-24 text-primary" />
+          </div>
+
+          <div className="relative z-10">
+            <h3 className="text-2xl font-bold mb-4 flex items-center gap-3">
+              <span className="p-2 rounded-lg bg-primary/20 text-primary">
+                <Mic className="w-5 h-5" />
+              </span>
+              Custom AI Feedback (n8n Automation)
+            </h3>
+            <p className="text-white/60 mb-6 max-w-2xl">
+              Want a deeper analysis? Send your session data to our n8n automation pipeline. 
+              Our custom AI agents will review your transcript and provide a detailed improvement roadmap via email.
+            </p>
+
+            <div className="flex flex-col gap-4">
+              <textarea 
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                placeholder="What specific area would you like more feedback on? (e.g., 'My explanation of ACID properties')"
+                className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all min-h-[120px]"
+              />
+              
+              <div className="flex items-center justify-between gap-4">
+                <div className="text-xs text-white/40 italic">
+                  * Powered by n8n Workflow Automation
+                </div>
+                <button 
+                  onClick={sendFeedbackToN8N}
+                  disabled={isSending || !feedback}
+                  className={`px-8 py-3 rounded-xl font-bold transition-all flex items-center gap-2 ${
+                    sent ? 'bg-green-500 text-white' : 'bg-primary hover:bg-primary/90 text-white shadow-[0_0_20px_rgba(59,130,246,0.3)]'
+                  } disabled:opacity-50`}
+                >
+                  {isSending ? (
+                    "Sending..."
+                  ) : sent ? (
+                    <><CheckCircle2 className="w-5 h-5" /> Feedback Sent!</>
+                  ) : (
+                    "Trigger n8n Workflow"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </motion.div>
       </main>
     </div>
   );
