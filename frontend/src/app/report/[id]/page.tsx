@@ -16,9 +16,8 @@ export default function InterviewReport() {
     if (!feedback) return;
     setIsSending(true);
     try {
-      // This is a placeholder webhook URL. 
-      // User needs to create this webhook in n8n.
-      const webhookUrl = "http://localhost:5678/webhook-test/feedback";
+      // Call our own backend proxy instead of n8n directly for security and reliability
+      const webhookUrl = "http://localhost:3001/api/n8n/feedback";
       
       const response = await fetch(webhookUrl, {
         method: 'POST',

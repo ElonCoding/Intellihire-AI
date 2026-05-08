@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const axios = require('axios');
 const { HfInference } = require('@huggingface/inference');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
@@ -76,6 +77,11 @@ Ask a thoughtful initial question based on their profile, keep it concise. Do no
   });
 
   socket.on('user_message', async (data) => {
+    // Safety check: Re-initialize session if it disappeared (e.g. server restart)
+    if (!sessions[socket.id]) {
+      sessions[socket.id] = [{ role: "system", content: "You are an expert AI technical interviewer. Act naturally." }];
+    }
+
     try {
       // User says something
       sessions[socket.id].push({ role: "user", content: data.text });
@@ -99,15 +105,21 @@ Ask a thoughtful initial question based on their profile, keep it concise. Do no
   });
 
   socket.on('audio_answer', async (audioBuffer) => {
+    // Safety check
+    if (!sessions[socket.id]) {
+      sessions[socket.id] = [{ role: "system", content: "You are an expert AI technical interviewer. Act naturally." }];
+    }
+
     try {
       console.log(`Received audio answer from ${socket.id}, size: ${audioBuffer.length} bytes`);
-
-      // Convert buffer to Blob for HuggingFace API if necessary
-      // Actually, HfInference can take a Buffer or Blob directly for data
+      
+      // Use a File object with a name and type so Fal AI / HF can determine content-type
+      const audioFile = new File([audioBuffer], "audio.webm", { type: 'audio/webm' });
+      
       const response = await hf.automaticSpeechRecognition({
         model: "openai/whisper-large-v3",
         provider: "fal-ai",
-        data: audioBuffer
+        data: audioFile
       });
 
       const transcript = response.text;
@@ -146,6 +158,40 @@ Ask a thoughtful initial question based on their profile, keep it concise. Do no
   });
 });
 
+// n8n Integration Endpoint
+app.post('/api/n8n/feedback', async (req, res) => {
+  const { sessionId, feedback, score, transcript } = req.body;
+  
+  try {
+    const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL || "http://localhost:5678/webhook-test/feedback";
+    
+    console.log(`Forwarding feedback for session ${sessionId} to n8n...`);
+    
+    const response = await axios.post(n8nWebhookUrl, {
+      sessionId,
+      feedback,
+      score,
+      transcript,
+      timestamp: new Date().toISOString(),
+      source: 'IntervAI-Backend'
+    });
+
+    res.status(200).json({ 
+      success: true, 
+      message: 'Feedback successfully forwarded to n8n',
+      n8nResponse: response.data 
+    });
+  } catch (error) {
+    console.error("n8n Forwarding Error:", error.message);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to connect to n8n',
+      error: error.message 
+    });
+  }
+});
+
+
 // Don't touch fucking below code and do not modify anything
 // I mean literally anything
 // Bro fucking delete me if you touch the below code
@@ -162,7 +208,9 @@ app.post('/api/analyze-resume', upload.single('resume'), async (req, res) => {
 
     let text = '';
     if (req.file.mimetype === 'application/pdf') {
-      const data = await pdfParse(req.file.buffer);
+      // Handle pdf-parse being a function or an object with a default property
+      const parse = typeof pdfParse === 'function' ? pdfParse : pdfParse.default;
+      const data = await parse(req.file.buffer);
       text = data.text;
     } else {
       text = req.file.buffer.toString('utf8');
